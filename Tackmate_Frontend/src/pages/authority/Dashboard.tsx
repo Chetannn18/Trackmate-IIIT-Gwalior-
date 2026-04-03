@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import api from '../../lib/api';
@@ -47,6 +48,7 @@ const getSeverityStyle = (sev: string): React.CSSProperties => {
 export default function AuthorityDashboard() {
     const { user } = useAuth();
     const { socket } = useSocket();
+    const navigate = useNavigate();
     const [incidents, setIncidents] = useState<any[]>([]);
     const [summary, setSummary] = useState({ totalUsers: 0, openIncidents: 0, sosLastHour: 0, activeUsersToday: 0, totalTourists: 0, totalResidents: 0, totalBusinesses: 0 });
     const [loading, setLoading] = useState(true);
@@ -293,6 +295,37 @@ export default function AuthorityDashboard() {
                     ))}
                 </div>
 
+                {/* Live Monitoring Panel */}
+                <div className="responsive-container" style={{ padding: '16px 28px 0' }}>
+                    <div style={{ ...clayCard, padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                        <div>
+                            <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textMuted }}>Live Monitoring</p>
+                            <h3 style={{ margin: '4px 0 0', fontWeight: 800, color: C.text, fontSize: '1rem' }}>Authority Command Live Map</h3>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Tracking {Object.keys(userLocations).length} live devices across zones.</p>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <button
+                                onClick={() => {
+                                    setFilteredUser(null);
+                                    setFocusLocation(null);
+                                }}
+                                style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: '8px 14px', fontFamily: 'inherit', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', color: C.text }}
+                            >
+                                Reset View
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const first = Object.values(userLocations)[0];
+                                    if (first) setFocusLocation({ lat: first.lat, lng: first.lng });
+                                }}
+                                style={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)', border: 'none', borderRadius: 12, padding: '8px 14px', fontFamily: 'inherit', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', color: '#FFFFFF', boxShadow: '0 6px 12px rgba(108,99,255,0.25)' }}
+                            >
+                                Focus Live
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Map */}
                 <div className="responsive-container" style={{ padding: '20px 28px 0', flex: 1, position: 'relative', minHeight: 420 }}>
                     <div style={{ ...clayCard, overflow: 'hidden', height: 420, position: 'relative', padding: 0 }}>
@@ -429,8 +462,8 @@ export default function AuthorityDashboard() {
                                                     <p style={{ fontWeight: 700, color: C.text, margin: 0, fontSize: '0.88rem' }}>{incident.title}</p>
                                                     <p style={{ fontSize: '0.72rem', color: C.textMuted, margin: 0, fontWeight: 500 }}>{incident.zone?.name || 'Unknown Location'}</p>
                                                 </td>
-                                                <td>
-                                                    <p style={{ fontWeight: 600, color: C.text, margin: 0, fontSize: '0.85rem' }}>{incident.reporter?.full_name || 'System'}</p>
+                                                <td onClick={e => { e.stopPropagation(); if (incident.reporter?._id) navigate(`/authority/user/${incident.reporter._id}`); }} style={{ cursor: incident.reporter?._id ? 'pointer' : 'default' }}>
+                                                    <p style={{ fontWeight: 600, color: incident.reporter?._id ? C.primary : C.text, margin: 0, fontSize: '0.85rem', textDecoration: incident.reporter?._id ? 'underline' : 'none' }}>{incident.reporter?.full_name || 'System'}</p>
                                                     <p style={{ fontSize: '0.7rem', color: C.primary, margin: 0, fontFamily: "'JetBrains Mono', monospace", fontWeight: 500 }}>{incident.reporter?.blockchain_id || 'LOCAL-AI'}</p>
                                                 </td>
                                                 <td>
