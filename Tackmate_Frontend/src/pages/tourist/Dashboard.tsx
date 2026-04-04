@@ -12,6 +12,7 @@ import {
     X, Send, MapPin, Radio, Bluetooth, Wifi
 } from 'lucide-react';
 import AlertPanel from '../../components/alerts/AlertPanel';
+import { enqueueOfflineSos, flushOfflineSosQueue, getOfflineSosQueueCount } from '../../lib/offlineSos';
 
 /* ── Clay color palette (correct) ── */
 const C = {
@@ -98,6 +99,7 @@ export default function TouristDashboard() {
     const [countdown, setCountdown] = useState(0);
     const [checkinLoading, setCheckinLoading] = useState(false);
     const [checkinDone, setCheckinDone] = useState(false);
+    const [verifyLoading, setVerifyLoading] = useState(false);
     const [verifyResult, setVerifyResult] = useState<string | null>(null);
     const [highlightZoneId, setHighlightZoneId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -105,6 +107,7 @@ export default function TouristDashboard() {
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [updateTripModalOpen, setUpdateTripModalOpen] = useState(false);
     const [iotModalOpen, setIotModalOpen] = useState(false);
+    const [proximityAlerts, setProximityAlerts] = useState<any[]>([]);
 
     /* ── GPS tracking ── */
     useEffect(() => {
@@ -135,11 +138,21 @@ export default function TouristDashboard() {
             const color = data.zone?.risk_level === 'high' || data.zone?.risk_level === 'restricted' ? 'error' : 'info';
             setToast({ message: data.message, type: color as any });
         };
+        const handleRedZoneProximity = (data: any) => {
+            setProximityAlerts(prev => {
+                const exists = prev.some(a => a.zone?.id === data.zone?.id);
+                if (exists) return prev.map(a => a.zone?.id === data.zone?.id ? { ...data, _id: `prox-${data.zone.id}`, receivedAt: Date.now() } : a);
+                return [{ ...data, _id: `prox-${data.zone?.id || Date.now()}`, receivedAt: Date.now() }, ...prev].slice(0, 5);
+            });
+            setToast({ message: data.message, type: 'error' });
+        };
         socket.on('zone_alert', handleZoneAlert);
-        return () => { socket.off('zone_alert', handleZoneAlert); };
+        socket.on('red_zone_proximity', handleRedZoneProximity);
+        return () => { socket.off('zone_alert', handleZoneAlert); socket.off('red_zone_proximity', handleRedZoneProximity); };
     }, [socket]);
 
     const fetchTouristData = useCallback(async () => {
+        setLoading(true);
         try {
             const [tripRes, alertsRes, zonesRes] = await Promise.all([api.get('/trips/active'), api.get('/incidents?limit=10'), api.get('/zones')]);
             if (tripRes.data.success) setActiveTrip(tripRes.data.data);
@@ -155,6 +168,27 @@ export default function TouristDashboard() {
         return () => { clearInterval(interval); if (socket) socket.off('new-incident'); };
     }, [socket, fetchTouristData]);
 
+    useEffect(() => {
+        const flushQueuedSos = async () => {
+            if (!navigator.onLine) return;
+            const result = await flushOfflineSosQueue();
+            if (result.sent > 0) {
+                setToast({ message: `${result.sent} offline SOS alert(s) sent`, type: 'success' });
+            }
+        };
+
+        void flushQueuedSos();
+
+        const onOnline = () => {
+            void flushQueuedSos();
+        };
+
+        window.addEventListener('online', onOnline);
+        return () => {
+            window.removeEventListener('online', onOnline);
+        };
+    }, []);
+
     const handleCheckin = async () => {
         if (!userLat || !userLng) { setToast({ message: 'Unable to get your location', type: 'error' }); return; }
         setCheckinLoading(true);
@@ -162,6 +196,7 @@ export default function TouristDashboard() {
             const res = await api.post('/locations', { latitude: userLat, longitude: userLng, source: 'gps' });
             setCheckinDone(true);
             const zone = res.data.data?.zone;
+            await api.post('/incidents', { title: 'Tourist Checked In', description: `User checked in at ${userLat.toFixed(4)}, ${userLng.toFixed(4)}` + (zone ? ` (${zone.name})` : ''), incident_type: 'checkin', severity: 'low', source: 'user_report', latitude: userLat, longitude: userLng, is_public: false }).catch(() => { });
             setToast({ message: zone ? `Checked in at ${zone.name}` : 'Daily check-in recorded ✓', type: 'success' });
             setTimeout(() => setCheckinDone(false), 5000);
         } catch { setToast({ message: 'Check-in failed. Try again.', type: 'error' }); } finally { setCheckinLoading(false); }
@@ -169,13 +204,22 @@ export default function TouristDashboard() {
 
     const handleVerifyStay = async () => {
         if (!userLat || !userLng) { setToast({ message: 'Unable to get location', type: 'error' }); return; }
+        setVerifyLoading(true);
         try {
             const res = await api.post('/locations', { latitude: userLat, longitude: userLng, source: 'gps' });
             const zone = res.data.data?.zone;
-            if (zone) { setVerifyResult(`✓ You are in "${zone.name}" — ${zone.risk_level} zone`); setHighlightZoneId(zone._id); setTimeout(() => setHighlightZoneId(null), 8000); }
-            else { setVerifyResult('ℹ You are not inside any registered zone'); }
+            if (zone) {
+                setVerifyResult(`✓ You are in "${zone.name}" — ${zone.risk_level} zone`);
+                setHighlightZoneId(zone._id);
+                setTimeout(() => setHighlightZoneId(null), 8000);
+                api.post('/incidents', { title: 'Stay Verified', description: `User verified stay in ${zone.name}`, incident_type: 'checkin', severity: 'low', source: 'user_report', latitude: userLat, longitude: userLng, is_public: false }).catch(() => { });
+            }
+            else {
+                setVerifyResult('ℹ You are not inside any registered zone');
+                api.post('/incidents', { title: 'Stay Verification Failed', description: `User not in any registered zone`, incident_type: 'checkin', severity: 'medium', source: 'user_report', latitude: userLat, longitude: userLng, is_public: false }).catch(() => { });
+            }
             setTimeout(() => setVerifyResult(null), 6000);
-        } catch { setToast({ message: 'Verification failed', type: 'error' }); }
+        } catch { setToast({ message: 'Verification failed', type: 'error' }); } finally { setVerifyLoading(false); }
     };
 
     const handleSafeHouse = () => {
@@ -185,6 +229,7 @@ export default function TouristDashboard() {
         let nearest = safeZones[0]; let minDist = haversine(userLat, userLng, nearest.center_lat, nearest.center_lng);
         for (const z of safeZones) { const d = haversine(userLat, userLng, z.center_lat, z.center_lng); if (d < minDist) { nearest = z; minDist = d; } }
         setHighlightZoneId(nearest._id);
+        api.post('/incidents', { title: 'Safe House Requested', description: `User navigating to ${nearest.name}`, incident_type: 'safe_house_request', severity: 'low', source: 'user_report', latitude: userLat, longitude: userLng, is_public: false }).catch(() => { });
         setToast({ message: `Nearest safe zone: ${nearest.name} (${Math.round(minDist)}m)`, type: 'success' });
         setTimeout(() => setHighlightZoneId(null), 10000);
     };
@@ -210,11 +255,44 @@ export default function TouristDashboard() {
 
     const triggerSOS = async () => {
         setSosLoading(true);
+        const payload: Record<string, any> = {
+            title: 'EMERGENCY SOS TRIGGERED',
+            incident_type: 'sos_emergency',
+            severity: 'critical',
+            source: 'sos_panic',
+            latitude: userLat || 27.5855,
+            longitude: userLng || 91.8594,
+            is_public: true,
+            metadata: {
+                triggered_by_role: 'tourist',
+                triggered_by_name: user?.full_name || 'Tourist User',
+            },
+        };
+
         try {
             const pos = await new Promise<GeolocationPosition>((res, rej) => navigator.geolocation.getCurrentPosition(res, rej)).catch(() => null);
-            await api.post('/incidents', { title: 'EMERGENCY SOS TRIGGERED', incident_type: 'sos_emergency', severity: 'critical', source: 'sos_panic', latitude: pos?.coords.latitude || userLat || 27.5855, longitude: pos?.coords.longitude || userLng || 91.8594, is_public: true });
+
+            payload.latitude = pos?.coords.latitude || payload.latitude;
+            payload.longitude = pos?.coords.longitude || payload.longitude;
+
+            if (!navigator.onLine) {
+                enqueueOfflineSos(payload, 'tourist');
+                setToast({
+                    message: `No network. SOS saved offline (${getOfflineSosQueueCount()} queued).`,
+                    type: 'info',
+                });
+                return;
+            }
+
+            await api.post('/incidents', payload);
             setSosSuccess(true); setTimeout(() => setSosSuccess(false), 5000);
-        } catch { setToast({ message: 'SOS transmission failed!', type: 'error' }); } finally { setSosLoading(false); }
+        } catch {
+            enqueueOfflineSos(payload, 'tourist');
+            setToast({
+                message: `Network unstable. SOS cached safely (${getOfflineSosQueueCount()} queued).`,
+                type: 'info',
+            });
+        } finally { setSosLoading(false); }
     };
 
     const filteredZones = searchQuery.trim() ? zones.filter(z => z.name.toLowerCase().includes(searchQuery.toLowerCase())) : zones;
@@ -304,7 +382,9 @@ export default function TouristDashboard() {
                                     {verifyResult && <div style={{ padding: '10px 14px', background: 'rgba(108,99,255,0.06)', borderRadius: 12, border: `1px solid rgba(108,99,255,0.15)`, fontSize: '0.82rem', fontWeight: 600, color: C.primary }}>{verifyResult}</div>}
                                     <div style={{ display: 'flex', gap: 8 }}>
                                         <button onClick={() => setUpdateTripModalOpen(true)} style={{ flex: 1, padding: 10, background: 'linear-gradient(135deg, #6C63FF, #8B85FF)', border: 'none', borderRadius: 12, fontFamily: 'inherit', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', textTransform: 'uppercase', color: '#FFFFFF', boxShadow: '0 4px 12px rgba(108,99,255,0.25)' }}>Update Plan</button>
-                                        <button onClick={handleVerifyStay} style={{ flex: 1, padding: 10, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, fontFamily: 'inherit', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', textTransform: 'uppercase', color: C.text, boxShadow: '4px 4px 8px rgba(27,29,42,0.08), -2px -2px 6px rgba(255,255,255,0.9)' }}>Verify Stay</button>
+                                        <button onClick={handleVerifyStay} disabled={verifyLoading} style={{ flex: 1, padding: 10, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, fontFamily: 'inherit', fontWeight: 700, fontSize: '0.72rem', cursor: verifyLoading ? 'default' : 'pointer', textTransform: 'uppercase', color: C.text, boxShadow: '4px 4px 8px rgba(27,29,42,0.08), -2px -2px 6px rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: verifyLoading ? 0.7 : 1 }}>
+                                            {verifyLoading ? <Loader2 size={14} className="animate-spin" /> : 'Verify Stay'}
+                                        </button>
                                     </div>
                                 </div>
                             ) : (
@@ -345,10 +425,25 @@ export default function TouristDashboard() {
                             <h3 style={{ fontWeight: 800, color: C.text, margin: 0, fontSize: '0.88rem' }}>Safety Broadcasts</h3>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <button onClick={fetchTouristData} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted }}><RefreshCw size={13} className={loading ? 'animate-spin' : ''} /></button>
-                                {alerts.length > 0 && <span style={{ padding: '3px 10px', background: 'linear-gradient(135deg, #F87171, #EF4444)', color: '#FFFFFF', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', borderRadius: 20 }}>{alerts.length} Active</span>}
+                                {(alerts.length + proximityAlerts.length) > 0 && <span style={{ padding: '3px 10px', background: 'linear-gradient(135deg, #F87171, #EF4444)', color: '#FFFFFF', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', borderRadius: 20 }}>{alerts.length + proximityAlerts.length} Active</span>}
                             </div>
                         </div>
-                        <div style={{ padding: 14, maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ padding: 14, maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {/* Red Zone Proximity Alerts */}
+                            {proximityAlerts.map(pa => (
+                                <div key={pa._id} style={{ padding: '12px 14px', background: 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(248,113,113,0.04))', border: `1px solid rgba(239,68,68,0.25)`, borderRadius: 14, display: 'flex', gap: 10, animation: 'nb-pulse 2s infinite' }}>
+                                    <div style={{ width: 32, height: 32, background: 'linear-gradient(135deg, #EF4444, #DC2626)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                        <ShieldAlert size={16} color="#FFFFFF" />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <p style={{ fontWeight: 800, color: C.critical, margin: 0, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>⚡ RED ZONE NEARBY</p>
+                                        <p style={{ fontWeight: 700, color: C.text, margin: '2px 0 0', fontSize: '0.82rem' }}>{pa.zone?.name} — {pa.distance_meters}m away</p>
+                                        <p style={{ fontSize: '0.68rem', color: C.textMuted, margin: '2px 0 0', fontWeight: 500 }}>{pa.zone?.risk_level} zone · {new Date(pa.timestamp).toLocaleTimeString()}</p>
+                                    </div>
+                                    <button onClick={() => setProximityAlerts(prev => prev.filter(a => a._id !== pa._id))} style={{ background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 8, padding: '4px 6px', cursor: 'pointer', alignSelf: 'flex-start' }}><X size={12} color={C.critical} /></button>
+                                </div>
+                            ))}
+                            {/* Regular alerts */}
                             {alerts.length > 0 ? alerts.map(alert => {
                                 const col = alert.severity === 'critical' ? C.critical : alert.severity === 'high' ? C.high : C.primary;
                                 const bgCol = alert.severity === 'critical' ? 'rgba(239,68,68,0.06)' : alert.severity === 'high' ? 'rgba(248,113,113,0.06)' : 'rgba(108,99,255,0.06)';
@@ -361,7 +456,7 @@ export default function TouristDashboard() {
                                         </div>
                                     </div>
                                 );
-                            }) : (
+                            }) : proximityAlerts.length === 0 && (
                                 <div style={{ padding: 24, textAlign: 'center', border: `2px dashed ${C.border}`, borderRadius: 14 }}>
                                     <Check size={20} color={C.safe} style={{ margin: '0 auto 6px' }} />
                                     <p style={{ fontSize: '0.78rem', color: C.textMuted, fontWeight: 600 }}>All sectors clear. Enjoy your trip!</p>
@@ -382,10 +477,10 @@ export default function TouristDashboard() {
                     <button onMouseDown={handleSOSStart} onMouseUp={handleSOSEnd} onMouseLeave={handleSOSEnd} onTouchStart={handleSOSStart} onTouchEnd={handleSOSEnd}
                         style={{ width: 80, height: 80, background: 'linear-gradient(135deg, #F87171, #EF4444)', border: 'none', borderRadius: '50%', boxShadow: countdown > 0 ? '0 0 0 10px rgba(239,68,68,0.3), 0 8px 24px rgba(239,68,68,0.4)' : '0 8px 24px rgba(239,68,68,0.3)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', color: '#FFFFFF', transform: countdown > 0 ? 'scale(1.1)' : undefined, transition: 'all 0.2s', outline: 'none', animation: countdown === 0 ? 'pulse-glow 2s ease-in-out infinite' : undefined }}
                     >
-                        {sosLoading ? <Loader2 size={28} style={{ animation: 'spin-slow 1s linear infinite' }} /> : countdown > 0 ? <span style={{ fontSize: '1.8rem', fontWeight: 800 }}>{countdown}</span> : <><ShieldAlert size={28} /><span style={{ fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase' }}>Hold SOS</span></>}
+                        {sosLoading ? <Loader2 size={28} style={{ animation: 'spin-slow 1s linear infinite' }} /> : countdown > 0 ? <span style={{ fontSize: '1.8rem', fontWeight: 800 }}>{countdown}</span> : <><ShieldAlert size={28} /><span style={{ fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase' }}>Hold 3s</span></>}
                     </button>
                 )}
-                {countdown > 0 && <div style={{ position: 'absolute', top: 10, right: '110%', whiteSpace: 'nowrap', background: 'linear-gradient(135deg, #F87171, #EF4444)', color: '#FFFFFF', borderRadius: 12, padding: '8px 16px', fontWeight: 800, fontSize: '0.78rem', boxShadow: '0 4px 12px rgba(239,68,68,0.3)' }}>TRANSMITTING IN {countdown}s...</div>}
+                {countdown > 0 && <div style={{ position: 'absolute', top: 10, right: '110%', whiteSpace: 'nowrap', background: 'linear-gradient(135deg, #F87171, #EF4444)', color: '#FFFFFF', borderRadius: 12, padding: '8px 16px', fontWeight: 800, fontSize: '0.78rem', boxShadow: '0 4px 12px rgba(239,68,68,0.3)' }}>HOLDING ({countdown}s)</div>}
             </div>
 
             {/* Report Modal */}
@@ -426,7 +521,7 @@ function ReportAnomalyModal({ open, onClose, userLat, userLng, onSuccess, onErro
         <ClayModal open={open} onClose={onClose} title="Report Safety Anomaly">
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div><label style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B6B6B', display: 'block', marginBottom: 6 }}>Incident Type</label>
-                    <select value={incidentType} onChange={e => setIncidentType(e.target.value)} style={nbInputStyle}><option value="suspicious_activity">Suspicious Activity</option><option value="crime">Crime (Theft/Harassment)</option><option value="medical_emergency">Medical Emergency</option><option value="natural_disaster">Natural Disaster</option><option value="infrastructure_hazard">Infrastructure Hazard</option><option value="accident">Accident / Other</option></select>
+                    <select value={incidentType} onChange={e => setIncidentType(e.target.value)} style={clayInputStyle}><option value="suspicious_activity">Suspicious Activity</option><option value="crime">Crime (Theft/Harassment)</option><option value="medical_emergency">Medical Emergency</option><option value="natural_disaster">Natural Disaster</option><option value="infrastructure_hazard">Infrastructure Hazard</option><option value="accident">Accident / Other</option></select>
                 </div>
                 <div><label style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.textMuted, display: 'block', marginBottom: 6 }}>Title</label><input value={title} onChange={e => setTitle(e.target.value)} style={clayInputStyle} placeholder="Brief summary" required /></div>
                 <div><label style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.textMuted, display: 'block', marginBottom: 6 }}>Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} style={{ ...clayInputStyle, resize: 'vertical' as const, minHeight: 80 }} rows={3} placeholder="Details about what you observed..." /></div>

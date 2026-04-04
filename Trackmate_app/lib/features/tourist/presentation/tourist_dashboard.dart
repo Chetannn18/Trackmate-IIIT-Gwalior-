@@ -9,6 +9,7 @@ import '../../../core/widgets/clay_widgets.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/socket_service.dart';
+import '../../../core/widgets/nb_widgets.dart';
 
 class TouristDashboard extends ConsumerStatefulWidget {
   const TouristDashboard({super.key});
@@ -23,7 +24,8 @@ class _TouristDashboardState extends ConsumerState<TouristDashboard> with Single
   bool _isSosActive = false;
   int _sosPressCount = 0;
   DateTime? _lastSosPress;
-
+  bool _checkinLoading = false;
+  bool _verifyLoading = false;
   List<dynamic> _zones = [];
   List<dynamic> _incidents = [];
   bool _isLoadingZones = true;
@@ -277,6 +279,94 @@ class _TouristDashboardState extends ConsumerState<TouristDashboard> with Single
     );
   }
 
+  Future<void> _handleCheckin(LocationState locState) async {
+    if (locState.position == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wait for location')));
+      return;
+    }
+    setState(() => _checkinLoading = true);
+    try {
+      final body = {
+        'latitude': locState.position!.latitude,
+        'longitude': locState.position!.longitude,
+        'source': 'gps'
+      };
+      final res = await ApiClient.post('/locations', body);
+      final zone = res['data']?['zone'];
+      await ApiClient.post('/incidents', {
+        'title': 'Tourist Checked In',
+        'description': 'User checked in ${zone != null ? 'at ${zone['name']}' : ''}',
+        'incident_type': 'other',
+        'severity': 'low',
+        'location': {
+          'type': 'Point',
+          'coordinates': [locState.position!.longitude, locState.position!.latitude]
+        }
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(zone != null ? 'Checked in at ${zone['name']}' : 'Daily check-in recorded')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Check-in failed: $e')));
+    } finally {
+      if (mounted) setState(() => _checkinLoading = false);
+    }
+  }
+
+  Future<void> _handleVerifyStay(LocationState locState) async {
+    if (locState.position == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wait for location')));
+      return;
+    }
+    setState(() => _verifyLoading = true);
+    try {
+      final body = {
+        'latitude': locState.position!.latitude,
+        'longitude': locState.position!.longitude,
+        'source': 'gps'
+      };
+      final res = await ApiClient.post('/locations', body);
+      final zone = res['data']?['zone'];
+      
+      if (zone != null) {
+        await ApiClient.post('/incidents', {
+          'title': 'Stay Verified',
+          'description': 'User verified stay in ${zone['name']}',
+          'incident_type': 'other',
+          'severity': 'low',
+          'location': { 'type': 'Point', 'coordinates': [locState.position!.longitude, locState.position!.latitude] }
+        });
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✓ Verified inside ${zone['name']}')));
+      } else {
+        await ApiClient.post('/incidents', {
+          'title': 'Stay Verification Failed',
+          'description': 'User not in any zone',
+          'incident_type': 'other',
+          'severity': 'medium',
+          'location': { 'type': 'Point', 'coordinates': [locState.position!.longitude, locState.position!.latitude] }
+        });
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ℹ Not inside any registered zone')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verify failed: $e')));
+    } finally {
+      if (mounted) setState(() => _verifyLoading = false);
+    }
+  }
+
+  void _handleSafeHouse(LocationState locState) {
+    if (locState.position == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wait for location')));
+      return;
+    }
+    ApiClient.post('/incidents', {
+      'title': 'Safe House Requested',
+      'description': 'User navigating to nearest safe house',
+      'incident_type': 'other',
+      'severity': 'low',
+      'location': { 'type': 'Point', 'coordinates': [locState.position!.longitude, locState.position!.latitude] }
+    });
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Safe house navigation started. Authorities notified.')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final locationState = ref.watch(locationProvider);
@@ -361,18 +451,52 @@ class _TouristDashboardState extends ConsumerState<TouristDashboard> with Single
                           onTap: _showReportAnomalyModal,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: ClayButton(
-                          label: 'Locate Me',
-                          variant: ClayButtonVariant.primary,
-                          onTap: () {},
+                        child: NBButton(
+                          label: 'LOCATE ME',
+                          icon: Icons.my_location,
+                          color: NB.yellow,
+                          onTap: () {
+                             // Will center map (map controller needed for true centering)
+                          },
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  const Text('Recent Nearby Incidents', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Clay.text)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: NBButton(
+                          label: _checkinLoading ? '...' : 'CHECK-IN',
+                          icon: Icons.check_circle,
+                          color: _checkinLoading ? NB.textMuted : NB.blue,
+                          onTap: _checkinLoading ? () {} : () => _handleCheckin(locationState),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: NBButton(
+                          label: 'SAFE HOUSE',
+                          icon: Icons.shield,
+                          color: NB.violet,
+                          onTap: () => _handleSafeHouse(locationState),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: NBButton(
+                          label: _verifyLoading ? '...' : 'VERIFY',
+                          icon: Icons.verified_user,
+                          color: _verifyLoading ? NB.textMuted : NB.mint,
+                          onTap: _verifyLoading ? () {} : () => _handleVerifyStay(locationState),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('RECENT NEARBY INCIDENTS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1.2)),
                   const SizedBox(height: 8),
                   Expanded(
                     child: _incidents.isEmpty
