@@ -1,6 +1,6 @@
 import { Server as HTTPServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { LocationLog, Zone, Profile } from '../models';
+import { Incident, LocationLog, Zone, Profile } from '../models';
 import { findZoneForPoint } from '../lib/geofence';
 
 let io: SocketIOServer | null = null;
@@ -64,8 +64,16 @@ export function initSocket(httpServer: HTTPServer): SocketIOServer {
             socket.join(`zone_${zoneId}`);
         });
 
+        socket.on('join:incident', (incidentId: string) => {
+            socket.join(`incident_${incidentId}`);
+        });
+
+        socket.on('leave:incident', (incidentId: string) => {
+            socket.leave(`incident_${incidentId}`);
+        });
+
         // ─── Location Update via Socket (5s interval from clients) ───
-        socket.on('location_update', async (data: { userId: string; latitude: number; longitude: number; accuracy?: number; speed?: number; battery?: number }) => {
+        socket.on('location_update', async (data: { userId: string; latitude: number; longitude: number; accuracy?: number; speed?: number; battery?: number; role?: string; name?: string }) => {
             try {
                 if (!data || !data.userId) return;
                 userLastSeen.set(data.userId, Date.now());
@@ -133,6 +141,29 @@ export function initSocket(httpServer: HTTPServer): SocketIOServer {
                     }
                 }
 
+                // Red zone proximity detection — alert tourist when near (within 500m)
+                // of a high/restricted zone but not inside one
+                const PROXIMITY_THRESHOLD_M = 500;
+                if (!matchingZone || (matchingZone.risk_level !== 'high' && matchingZone.risk_level !== 'restricted')) {
+                    const { distanceInMeters } = await import('../lib/geofence');
+                    const dangerousZones = zones.filter(
+                        (z: any) => z.is_active && (z.risk_level === 'high' || z.risk_level === 'restricted')
+                    );
+                    for (const dz of dangerousZones) {
+                        const dist = distanceInMeters(data.latitude, data.longitude, dz.center_lat, dz.center_lng);
+                        const edgeDist = Math.max(0, dist - (dz.radius_meters || 0));
+                        if (edgeDist > 0 && edgeDist <= PROXIMITY_THRESHOLD_M) {
+                            io!.to(`user_${data.userId}`).emit('red_zone_proximity', {
+                                zone: { id: String(dz._id), name: dz.name, risk_level: dz.risk_level },
+                                distance_meters: Math.round(edgeDist),
+                                message: `⚠️ You are ${Math.round(edgeDist)}m from ${dz.name} (${dz.risk_level} zone). Stay alert!`,
+                                timestamp: new Date().toISOString(),
+                            });
+                            break; // Only alert for the nearest dangerous zone
+                        }
+                    }
+                }
+
                 // Forward to authority room for live monitoring
                 io!.to('authority_room').emit('location:update', {
                     userId: data.userId,
@@ -141,6 +172,48 @@ export function initSocket(httpServer: HTTPServer): SocketIOServer {
                     zone: matchingZone ? { id: matchingZone._id, name: matchingZone.name, risk_level: matchingZone.risk_level } : null,
                     timestamp: new Date().toISOString(),
                 });
+
+                // Crisis timeline movement pings for active SOS incidents where this user
+                // is the reporter or currently assigned responder.
+                if (count % 2 === 0) {
+                    const recentSosIncidents = await Incident.find({
+                        incident_type: 'sos_emergency',
+                        status: { $in: ['active', 'acknowledged', 'assigned', 'escalated'] },
+                        created_at: { $gte: new Date(Date.now() - 12 * 60 * 60 * 1000) },
+                        $or: [{ reporter: data.userId }, { assigned_to: data.userId }],
+                    })
+                        .select('_id reporter assigned_to')
+                        .limit(4)
+                        .lean();
+
+                    for (const incident of recentSosIncidents) {
+                        const incidentId = String(incident._id);
+                        io!.to('authority_room').to(`incident_${incidentId}`).emit('crisis:timeline', {
+                            incident_id: incidentId,
+                            events: [
+                                {
+                                    event_id: `loc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                                    type: 'live_location_ping',
+                                    label: 'Live location update received',
+                                    timestamp: new Date().toISOString(),
+                                    actor_role: data.role || 'user',
+                                    actor_id: data.userId,
+                                    details: {
+                                        latitude: data.latitude,
+                                        longitude: data.longitude,
+                                        zone: matchingZone
+                                            ? {
+                                                id: String(matchingZone._id),
+                                                name: matchingZone.name,
+                                                risk_level: matchingZone.risk_level,
+                                            }
+                                            : null,
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                }
             } catch (err) {
                 console.error('Socket location_update error:', err);
             }
