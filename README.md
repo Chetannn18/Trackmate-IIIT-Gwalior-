@@ -1,4 +1,3 @@
-# Trackmate-IIIT-Gwalior-
 # TrackMate — Real-Time Safety Monitoring Platform
 
 "Know Where. Stay Safe."
