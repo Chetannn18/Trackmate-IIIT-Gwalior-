@@ -1,2 +1,8 @@
-# Prevent dependency folders from being committed
 node_modules/
+.env
+.DS_Store
+dist/
+build/
+coverage/
+*-error.log*
+.vercel/

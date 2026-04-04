@@ -2,39 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
+import { useLanguage } from '../../i18n';
 import api from '../../lib/api';
 import { AlertTriangle, RefreshCw, Loader2, TrendingUp, Search, Users, Zap, Shield, MapPin, Eye, Activity, Globe, CheckCircle2, Clock } from 'lucide-react';
 import AuthorityMap from '../../components/maps/AuthorityMap';
 import AuthoritySidebar from '../../components/layout/AuthoritySidebar';
 import type { ZoneData } from '../../components/maps/TouristMap';
-
-/* ── Clay color palette ── */
-const C = {
-    bg: '#F0EDFA',
-    surface: '#FFFFFF',
-    surfaceAlt: '#F7F5FF',
-    dark: '#1B1D2A',
-    darkAlt: '#252840',
-    text: '#1B1D2A',
-    textSecondary: '#4A4D68',
-    textMuted: '#8B8FA8',
-    primary: '#6C63FF',
-    primaryLight: '#8B85FF',
-    accent: '#FF6B8A',
-    safe: '#34D399',
-    moderate: '#FBBF24',
-    high: '#F87171',
-    restricted: '#A78BFA',
-    critical: '#EF4444',
-    border: 'rgba(27,29,42,0.08)',
-};
-
-const clayCard: React.CSSProperties = {
-    background: C.surface,
-    borderRadius: 20,
-    border: `1px solid ${C.border}`,
-    boxShadow: '6px 6px 14px rgba(27,29,42,0.10), -3px -3px 10px rgba(255,255,255,0.9)',
-};
+import { CLAY_COLORS as C, CLAY_CARD_STYLE as clayCard } from '../../theme/clayTheme';
 
 const getSeverityStyle = (sev: string): React.CSSProperties => {
     switch (sev?.toLowerCase()) {
@@ -81,7 +55,7 @@ export default function AuthorityDashboard() {
     const [searchQuery, setSearchQuery] = useState('');
     const [filteredUser, setFilteredUser] = useState<string | null>(null);
     const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-    const [drawColor, setDrawColor] = useState(C.high);
+    const [drawColor, setDrawColor] = useState<string>(C.high);
     const [emergencyAlerts, setEmergencyAlerts] = useState<any[]>([]);
     const [checkins, setCheckins] = useState<any[]>([]);
     const [riskPulse, setRiskPulse] = useState<any>(null);
@@ -299,17 +273,19 @@ export default function AuthorityDashboard() {
         return acc;
     }, { tourists: 0, residents: 0, businesses: 0 });
 
+    const { t } = useLanguage();
+
     const statCards = [
-        { label: 'Live Users', value: Object.keys(userLocations).length, icon: <Eye size={20} />, color: C.primary, colorBg: 'rgba(108,99,255,0.08)', pulse: false },
-        { label: 'Open Incidents', value: summary.openIncidents, icon: <AlertTriangle size={20} />, color: C.high, colorBg: 'rgba(248,113,113,0.08)', pulse: summary.openIncidents > 0 },
-        { label: 'SOS (Last Hour)', value: summary.sosLastHour, icon: <Zap size={20} />, color: C.critical, colorBg: 'rgba(239,68,68,0.08)', pulse: summary.sosLastHour > 0 },
-        { label: 'Total Profiles', value: summary.totalUsers, icon: <Shield size={20} />, color: C.safe, colorBg: 'rgba(52,211,153,0.08)', pulse: false },
+        { label: t('liveUsers'), value: Object.keys(userLocations).length, icon: <Eye size={20} />, color: C.primary, colorBg: 'rgba(108,99,255,0.08)', pulse: false },
+        { label: t('openIncidents'), value: summary.openIncidents, icon: <AlertTriangle size={20} />, color: C.high, colorBg: 'rgba(248,113,113,0.08)', pulse: summary.openIncidents > 0 },
+        { label: t('sosLastHour'), value: summary.sosLastHour, icon: <Zap size={20} />, color: C.critical, colorBg: 'rgba(239,68,68,0.08)', pulse: summary.sosLastHour > 0 },
+        { label: t('totalProfiles'), value: summary.totalUsers, icon: <Shield size={20} />, color: C.safe, colorBg: 'rgba(52,211,153,0.08)', pulse: false },
     ];
 
     const roleBadges = [
-        { label: 'Tourists', count: liveRoleCounts.tourists, color: C.primary, icon: <Globe size={14} /> },
-        { label: 'Residents', count: liveRoleCounts.residents, color: C.safe, icon: <Users size={14} /> },
-        { label: 'Businesses', count: liveRoleCounts.businesses, color: C.moderate, icon: <Activity size={14} /> },
+        { label: t('tourists'), count: liveRoleCounts.tourists, color: C.primary, icon: <Globe size={14} /> },
+        { label: t('residents'), count: liveRoleCounts.residents, color: C.safe, icon: <Users size={14} /> },
+        { label: t('businesses'), count: liveRoleCounts.businesses, color: C.moderate, icon: <Activity size={14} /> },
     ];
 
     const pulseTrend = String(riskPulse?.trend || 'stable').toLowerCase();
@@ -327,9 +303,9 @@ export default function AuthorityDashboard() {
                 {/* Top bar */}
                 <div className="top-header responsive-container" style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '16px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(27,29,42,0.04)' }}>
                     <div>
-                        <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: C.text, margin: 0, letterSpacing: '-0.01em' }}>Command Dashboard</h1>
+                        <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: C.text, margin: 0, letterSpacing: '-0.01em' }}>{t('commandDashboard')}</h1>
                         <p style={{ fontSize: '0.75rem', color: C.textMuted, margin: 0, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            {user?.full_name} · {user?.designation || 'Authority Officer'}
+                            {user?.full_name} · {user?.designation || t('authorityOfficer')}
                         </p>
                     </div>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -342,10 +318,11 @@ export default function AuthorityDashboard() {
                             </div>
                         ))}
                         <button onClick={fetchDashboardData} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', fontWeight: 700, fontSize: '0.78rem', color: C.text, boxShadow: '4px 4px 8px rgba(27,29,42,0.06), -2px -2px 6px rgba(255,255,255,0.9)', transition: 'all 0.15s' }}>
-                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> <span className="refresh-text">Refresh</span>
+                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> <span className="refresh-text">{t('refresh')}</span>
                         </button>
                     </div>
                 </div>
+
 
                 {/* Emergency Alerts Navbar Banner */}
                 {emergencyAlerts.length > 0 && (
@@ -437,6 +414,7 @@ export default function AuthorityDashboard() {
                     </div>
                 )}
 
+
                 {/* Stat Cards */}
                 <div className="grid-4 responsive-grid" style={{ gap: 16, padding: '20px 28px 0' }}>
                     {statCards.map((s, i) => (
@@ -457,6 +435,118 @@ export default function AuthorityDashboard() {
                             {!s.pulse && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 5, color: C.safe, fontSize: '0.65rem', fontWeight: 700 }}><TrendingUp size={11} /> Live tracking active</div>}
                         </div>
                     ))}
+                </div>
+                {/* Live Monitoring Panel */}
+                <div className="responsive-container" style={{ padding: '16px 28px 0' }}>
+                    <div style={{ ...clayCard, padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                        <div>
+                            <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textMuted }}>Live Monitoring</p>
+                            <h3 style={{ margin: '4px 0 0', fontWeight: 800, color: C.text, fontSize: '1rem' }}>Authority Command Live Map</h3>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Tracking {Object.keys(userLocations).length} live devices across zones.</p>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <button
+                                onClick={() => {
+                                    setFilteredUser(null);
+                                    setFocusLocation(null);
+                                }}
+                                style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: '8px 14px', fontFamily: 'inherit', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', color: C.text }}
+                            >
+                                Reset View
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const first = Object.values(userLocations)[0];
+                                    if (first) setFocusLocation({ lat: first.lat, lng: first.lng });
+                                }}
+                                style={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)', border: 'none', borderRadius: 12, padding: '8px 14px', fontFamily: 'inherit', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', color: '#FFFFFF', boxShadow: '0 6px 12px rgba(108,99,255,0.25)' }}
+                            >
+                                Focus Live
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Map */}
+                <div className="responsive-container" style={{ padding: '20px 28px 0', flex: 1, position: 'relative', minHeight: 420 }}>
+                    <div style={{ ...clayCard, overflow: 'hidden', height: 420, position: 'relative', padding: 0 }}>
+                        <AuthorityMap
+                            zones={zones}
+                            incidents={incidents}
+                            userLocations={filteredLocations}
+                            focusLocation={focusLocation}
+                            onZoneCreated={handleZoneCreated}
+                            onZoneDeleted={handleZoneDeleted}
+                            drawColor={drawColor}
+                        />
+                        {/* Search overlay & controls */}
+                        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 400, width: 240, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ position: 'relative' }}>
+                                <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.textMuted }} />
+                                <input
+                                    value={searchQuery}
+                                    onChange={e => {
+                                        setSearchQuery(e.target.value);
+                                        const q = e.target.value.toLowerCase();
+                                        const zone = zones.find(z => z.name.toLowerCase().includes(q));
+                                        if (zone) setFocusLocation({ lat: zone.center_lat, lng: zone.center_lng });
+                                    }}
+                                    placeholder="Search zones..."
+                                    style={{ width: '100%', padding: '10px 14px 10px 34px', background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: '0 4px 12px rgba(27,29,42,0.08)', fontFamily: 'inherit', fontSize: '0.8rem', fontWeight: 600, outline: 'none', color: C.text }}
+                                />
+                            </div>
+
+                            {/* Color Picker for Geofencing */}
+                            <div style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: '0 4px 12px rgba(27,29,42,0.08)', padding: '10px 14px' }}>
+                                <p style={{ margin: '0 0 8px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: C.textMuted }}>Draw Zone</p>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    {[
+                                        { color: C.safe, label: 'Safe' },
+                                        { color: C.moderate, label: 'Moderate' },
+                                        { color: C.high, label: 'High' },
+                                        { color: C.restricted, label: 'Restricted' }
+                                    ].map(c => (
+                                        <button
+                                            key={c.color}
+                                            onClick={() => setDrawColor(c.color)}
+                                            title={c.label}
+                                            style={{
+                                                width: 28, height: 28, borderRadius: '50%', background: c.color, cursor: 'pointer',
+                                                border: drawColor === c.color ? '3px solid #FFFFFF' : '2px solid transparent',
+                                                boxShadow: drawColor === c.color ? `0 0 0 2px ${c.color}, 0 4px 8px rgba(0,0,0,0.15)` : '0 2px 6px rgba(0,0,0,0.1)',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            {filteredUser && (
+                                <button onClick={() => { setFilteredUser(null); setFocusLocation(null); }} style={{ background: 'linear-gradient(135deg, #F87171, #EF4444)', color: '#FFFFFF', border: 'none', borderRadius: 12, padding: '8px 14px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', cursor: 'pointer', boxShadow: '0 4px 12px rgba(248,113,113,0.3)' }}>
+                                    Clear User Filter ✕
+                                </button>
+                            )}
+                        </div>
+                        {/* Legend */}
+                        <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 400, background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: '0 4px 12px rgba(27,29,42,0.08)', padding: '10px 16px' }}>
+                            <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, color: C.textMuted }}>Map Legend</div>
+                            {[{ color: C.safe, label: 'Safe Zone' }, { color: C.moderate, label: 'Moderate Zone' }, { color: C.high, label: 'High Risk' }, { color: C.restricted, label: 'Restricted Zone' }].map((l, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', fontWeight: 600, marginBottom: 4, color: C.text }}>
+                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: l.color, boxShadow: `0 0 4px ${l.color}60` }} />
+                                    {l.label}
+                                </div>
+                            ))}
+                            {/* User pin legend */}
+                            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 6, paddingTop: 6 }}>
+                                {[{ color: C.primary, label: 'Tourist' }, { color: C.safe, label: 'Resident' }, { color: C.moderate, label: 'Business' }].map((l, i) => (
+                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', fontWeight: 600, marginBottom: 3, color: C.text }}>
+                                        <MapPin size={10} color={l.color} />
+                                        {l.label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="responsive-grid" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16, padding: '16px 28px 0' }}>
@@ -593,134 +683,24 @@ export default function AuthorityDashboard() {
                     </div>
                 </div>
 
-                {/* Live Monitoring Panel */}
-                <div className="responsive-container" style={{ padding: '16px 28px 0' }}>
-                    <div style={{ ...clayCard, padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                        <div>
-                            <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textMuted }}>Live Monitoring</p>
-                            <h3 style={{ margin: '4px 0 0', fontWeight: 800, color: C.text, fontSize: '1rem' }}>Authority Command Live Map</h3>
-                            <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Tracking {Object.keys(userLocations).length} live devices across zones.</p>
-                        </div>
-                        <div style={{ display: 'flex', gap: 10 }}>
-                            <button
-                                onClick={() => {
-                                    setFilteredUser(null);
-                                    setFocusLocation(null);
-                                }}
-                                style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: '8px 14px', fontFamily: 'inherit', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', color: C.text }}
-                            >
-                                Reset View
-                            </button>
-                            <button
-                                onClick={() => {
-                                    const first = Object.values(userLocations)[0];
-                                    if (first) setFocusLocation({ lat: first.lat, lng: first.lng });
-                                }}
-                                style={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)', border: 'none', borderRadius: 12, padding: '8px 14px', fontFamily: 'inherit', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', color: '#FFFFFF', boxShadow: '0 6px 12px rgba(108,99,255,0.25)' }}
-                            >
-                                Focus Live
-                            </button>
-                        </div>
-                    </div>
-                </div>
 
-                {/* Map */}
-                <div className="responsive-container" style={{ padding: '20px 28px 0', flex: 1, position: 'relative', minHeight: 420 }}>
-                    <div style={{ ...clayCard, overflow: 'hidden', height: 420, position: 'relative', padding: 0 }}>
-                        <AuthorityMap
-                            zones={zones}
-                            incidents={incidents}
-                            userLocations={filteredLocations}
-                            focusLocation={focusLocation}
-                            onZoneCreated={handleZoneCreated}
-                            onZoneDeleted={handleZoneDeleted}
-                            drawColor={drawColor}
-                        />
-                        {/* Search overlay & controls */}
-                        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 400, width: 240, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <div style={{ position: 'relative' }}>
-                                <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.textMuted }} />
-                                <input
-                                    value={searchQuery}
-                                    onChange={e => {
-                                        setSearchQuery(e.target.value);
-                                        const q = e.target.value.toLowerCase();
-                                        const zone = zones.find(z => z.name.toLowerCase().includes(q));
-                                        if (zone) setFocusLocation({ lat: zone.center_lat, lng: zone.center_lng });
-                                    }}
-                                    placeholder="Search zones..."
-                                    style={{ width: '100%', padding: '10px 14px 10px 34px', background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: '0 4px 12px rgba(27,29,42,0.08)', fontFamily: 'inherit', fontSize: '0.8rem', fontWeight: 600, outline: 'none', color: C.text }}
-                                />
-                            </div>
 
-                            {/* Color Picker for Geofencing */}
-                            <div style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: '0 4px 12px rgba(27,29,42,0.08)', padding: '10px 14px' }}>
-                                <p style={{ margin: '0 0 8px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: C.textMuted }}>Draw Zone</p>
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    {[
-                                        { color: C.safe, label: 'Safe' },
-                                        { color: C.moderate, label: 'Moderate' },
-                                        { color: C.high, label: 'High' },
-                                        { color: C.restricted, label: 'Restricted' }
-                                    ].map(c => (
-                                        <button
-                                            key={c.color}
-                                            onClick={() => setDrawColor(c.color)}
-                                            title={c.label}
-                                            style={{
-                                                width: 28, height: 28, borderRadius: '50%', background: c.color, cursor: 'pointer',
-                                                border: drawColor === c.color ? '3px solid #FFFFFF' : '2px solid transparent',
-                                                boxShadow: drawColor === c.color ? `0 0 0 2px ${c.color}, 0 4px 8px rgba(0,0,0,0.15)` : '0 2px 6px rgba(0,0,0,0.1)',
-                                                transition: 'all 0.15s'
-                                            }}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-
-                            {filteredUser && (
-                                <button onClick={() => { setFilteredUser(null); setFocusLocation(null); }} style={{ background: 'linear-gradient(135deg, #F87171, #EF4444)', color: '#FFFFFF', border: 'none', borderRadius: 12, padding: '8px 14px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', cursor: 'pointer', boxShadow: '0 4px 12px rgba(248,113,113,0.3)' }}>
-                                    Clear User Filter ✕
-                                </button>
-                            )}
-                        </div>
-                        {/* Legend */}
-                        <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 400, background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: '0 4px 12px rgba(27,29,42,0.08)', padding: '10px 16px' }}>
-                            <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, color: C.textMuted }}>Map Legend</div>
-                            {[{ color: C.safe, label: 'Safe Zone' }, { color: C.moderate, label: 'Moderate Zone' }, { color: C.high, label: 'High Risk' }, { color: C.restricted, label: 'Restricted Zone' }].map((l, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', fontWeight: 600, marginBottom: 4, color: C.text }}>
-                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: l.color, boxShadow: `0 0 4px ${l.color}60` }} />
-                                    {l.label}
-                                </div>
-                            ))}
-                            {/* User pin legend */}
-                            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 6, paddingTop: 6 }}>
-                                {[{ color: C.primary, label: 'Tourist' }, { color: C.safe, label: 'Resident' }, { color: C.moderate, label: 'Business' }].map((l, i) => (
-                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', fontWeight: 600, marginBottom: 3, color: C.text }}>
-                                        <MapPin size={10} color={l.color} />
-                                        {l.label}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
                 {/* Daily Check-Ins Section */}
                 <div style={{ padding: '20px 28px 0' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                         <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: C.text, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
                             <div style={{ width: 4, height: 24, borderRadius: 4, background: 'linear-gradient(180deg, #34D399, #2DD4BF)', display: 'inline-block' }} />
-                            Daily Check-Ins
-                            {checkins.length > 0 && <span style={{ padding: '3px 10px', background: 'linear-gradient(135deg, #34D399, #2DD4BF)', color: '#FFFFFF', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', borderRadius: 20 }}>{checkins.length} today</span>}
+                            {t('dailyCheckins')}
+                            {checkins.length > 0 && <span style={{ padding: '3px 10px', background: 'linear-gradient(135deg, #34D399, #2DD4BF)', color: '#FFFFFF', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', borderRadius: 20 }}>{checkins.length} {t('checkinToday')}</span>}
                         </h2>
-                        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: C.textMuted }}>Tourist safety check-ins from last 24h</p>
+                        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: C.textMuted }}>{t('touristCheckins24h')}</p>
                     </div>
                     <div style={{ ...clayCard, overflow: 'hidden', padding: 0 }}>
                         {checkins.length === 0 ? (
                             <div style={{ padding: 28, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                                 <CheckCircle2 size={24} color={C.textMuted} />
-                                <p style={{ fontSize: '0.78rem', fontWeight: 700, color: C.textMuted }}>No check-ins recorded in the last 24 hours.</p>
+                                <p style={{ fontSize: '0.78rem', fontWeight: 700, color: C.textMuted }}>{t('noCheckins24h')}</p>
                             </div>
                         ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 0 }}>
@@ -760,7 +740,7 @@ export default function AuthorityDashboard() {
                                             </div>
                                             <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
                                                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.safe }} />
-                                                <span style={{ fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', color: C.safe }}>Checked In</span>
+                                                <span style={{ fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', color: C.safe }}>{t('checkedInStatus')}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -775,21 +755,21 @@ export default function AuthorityDashboard() {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                         <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: C.text, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
                             <div style={{ width: 4, height: 24, borderRadius: 4, background: 'linear-gradient(180deg, #EF4444, #F87171)', display: 'inline-block' }} />
-                            Live Alert Feed
+                            {t('liveAlertFeed')}
                         </h2>
-                        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: C.textMuted }}>Click a row to isolate reporter on map</p>
+                        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: C.textMuted }}>{t('clickRowToIsolate')}</p>
                     </div>
                     <div style={{ ...clayCard, overflow: 'hidden', padding: 0 }}>
                         {loading && incidents.length === 0 ? (
                             <div style={{ padding: 40, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
                                 <Loader2 size={28} style={{ animation: 'spin-slow 1s linear infinite', color: C.primary }} />
-                                <p style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textMuted }}>Connecting to node feed...</p>
+                                <p style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.textMuted }}>{t('connectingToFeed')}</p>
                             </div>
                         ) : (
                             <table className="geo-table">
                                 <thead>
                                     <tr>
-                                        <th>Severity</th><th>Title / Zone</th><th>Reporter</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th>
+                                        <th>{t('severityCol')}</th><th>{t('titleZone')}</th><th>{t('reporter')}</th><th>{t('status')}</th><th style={{ textAlign: 'right' }}>{t('actions')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -823,10 +803,10 @@ export default function AuthorityDashboard() {
                                                 </td>
                                                 <td>
                                                     <p style={{ fontWeight: 700, color: C.text, margin: 0, fontSize: '0.88rem' }}>{incident.title}</p>
-                                                    <p style={{ fontSize: '0.72rem', color: C.textMuted, margin: 0, fontWeight: 500 }}>{incident.zone?.name || 'Unknown Location'}</p>
+                                                    <p style={{ fontSize: '0.72rem', color: C.textMuted, margin: 0, fontWeight: 500 }}>{incident.zone?.name || t('unknownLocation')}</p>
                                                 </td>
                                                 <td onClick={e => { e.stopPropagation(); if (incident.reporter?._id) navigate(`/authority/user/${incident.reporter._id}`); }} style={{ cursor: incident.reporter?._id ? 'pointer' : 'default' }}>
-                                                    <p style={{ fontWeight: 600, color: incident.reporter?._id ? C.primary : C.text, margin: 0, fontSize: '0.85rem', textDecoration: incident.reporter?._id ? 'underline' : 'none' }}>{incident.reporter?.full_name || 'System'}</p>
+                                                    <p style={{ fontWeight: 600, color: incident.reporter?._id ? C.primary : C.text, margin: 0, fontSize: '0.85rem', textDecoration: incident.reporter?._id ? 'underline' : 'none' }}>{incident.reporter?.full_name || t('system')}</p>
                                                     <p style={{ fontSize: '0.7rem', color: C.primary, margin: 0, fontFamily: "'JetBrains Mono', monospace", fontWeight: 500 }}>{incident.reporter?.blockchain_id || 'LOCAL-AI'}</p>
                                                 </td>
                                                 <td>
@@ -844,21 +824,21 @@ export default function AuthorityDashboard() {
                                                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                                                             {incident.status !== 'acknowledged' && (
                                                                 <button onClick={() => handleUpdateIncident(incident._id, 'acknowledged')} style={{ background: 'linear-gradient(135deg, #6C63FF, #8B85FF)', color: '#FFFFFF', border: 'none', borderRadius: 10, padding: '6px 14px', fontFamily: 'inherit', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(108,99,255,0.25)' }}>
-                                                                    Acknowledge
+                                                                    {t('acknowledge')}
                                                                 </button>
                                                             )}
                                                             <button onClick={() => handleUpdateIncident(incident._id, 'resolved')} style={{ background: 'linear-gradient(135deg, #34D399, #2DD4BF)', color: '#FFFFFF', border: 'none', borderRadius: 10, padding: '6px 14px', fontFamily: 'inherit', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(52,211,153,0.25)' }}>
-                                                                Resolve
+                                                                {t('resolve')}
                                                             </button>
                                                         </div>
                                                     )}
-                                                    {incident.status === 'resolved' && <span style={{ fontSize: '0.72rem', fontWeight: 700, color: C.safe }}>✓ Done</span>}
+                                                    {incident.status === 'resolved' && <span style={{ fontSize: '0.72rem', fontWeight: 700, color: C.safe }}>{t('done')}</span>}
                                                 </td>
                                             </tr>
                                         );
                                     })}
                                     {incidents.length === 0 && (
-                                        <tr><td colSpan={5} style={{ textAlign: 'center', padding: 28, color: C.textMuted, fontWeight: 600 }}>No active incidents in this sector.</td></tr>
+                                        <tr><td colSpan={5} style={{ textAlign: 'center', padding: 28, color: C.textMuted, fontWeight: 600 }}>{t('noActiveIncidents')}</td></tr>
                                     )}
                                 </tbody>
                             </table>
