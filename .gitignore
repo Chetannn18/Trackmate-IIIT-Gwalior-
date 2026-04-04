@@ -1,0 +1,2 @@
+# Prevent dependency folders from being committed
+node_modules/
